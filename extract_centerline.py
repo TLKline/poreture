@@ -1,0 +1,295 @@
+#! /usr/bin/env python
+# -*- coding: utf-8 -*-
+"""This module implements a number of centerline extraction methods.
+
+The methods work on 3D binary volumes composed of
+0: background
+1: object to be skeletonized; have centerline extracted
+The volume representations are voxel based
+
+kline_vessel - [Kline et al. ABME 2010]
+
+kline_pore - [Kline et al. J Porous Mat 2011]
+
+kuba_thinning
+
+This is a multi-line docstring. Paragraphs are separated with blank lines. 
+Lines conform to 79-column limit. 
+
+Module and packages names should be short, lower_case_with_underscores.
+
+See http://www.python.org/dev/peps/pep-0008/ for more PEP-8 details and
+http://wwd.ca/blog/2009/07/09/pep-8-cheatsheet/ for an up-to-date version
+of this cheatsheet.
+"""
+
+# a 79-char ruler:
+#234567891123456789212345678931234567894123456789512345678961234567897123456789
+
+def find_3D_object_voxel_list(vol):
+    
+    B2 = vol.copy() > 0
+
+def find_terminal_end_points(vol):
+
+
+def kline_discrete(vol, startID, *args):
+    """This function creates a centerline from the segmented volume (vol)
+
+    vol: 3D binary volume
+    startID: index of root, as in [x,y,z] location
+    
+    optional:
+        dist_map_weight
+        cluster_graph_weight
+        min_branch_length
+    """
+
+    # Imports
+
+    # Make sure object is equal to 1
+    B2 = np.array(vol.copy() > 0)
+
+    # Set defaults
+    if dist_map_weight is undefined:
+        dist_map_weight = 6
+
+    if cluster_graph_weight is undefined:
+        cluster_graph_weight = np.sum(vol)/20
+
+    # Remember original volume size    
+    [xOrig,yOrig,zOrig] = B2.shape()
+
+    # Find 3D coordinates of volume (in order to limit size of volume)
+    [x3,y3,z3] = find3d_coord(B2);
+
+    # Limit volume size
+    B2 = B2[np.min(x3):np.max(x3)+1,np.min(y3):np.max(y3)+1,np.min(z3):np.max(z3)+1]
+
+    # Setup starting index list and correct for change in volume size
+    sx = startID[0] - np.min(x3) + 1
+    sy = startID[1] - np.min(y3) + 1
+    sz = startID[2] - np.min(z3) + 1
+
+    # New volume size
+    x_si = size(B2(:,1,1));
+    y_si = size(B2(1,:,1));
+    z_si = size(B2(1,1,:));
+    x_si = x_si(1,1);
+    y_si = y_si(1,2);
+    z_si = z_si(1,3,1);
+
+    # Perform binary fmm to determine terminal endpoints
+
+%fmm for binary (no weight function)
+tic;[D] = fast_marching(double(B2),[start_x;start_y;start_z]);toc; %was t7 before
+%save -v7.3 D D
+
+%begin determining endpoints
+b = D;
+b(D==Inf)=0;
+[xxx,yyy,zzz]=find3d_max_point(b);
+b = b./b(xxx(1),yyy(1),zzz(1));
+b = round(b.*cluster_ref);
+a6 = imregionalmax(b);
+clear b xxx yyy zzz
+[L,N]=bwlabeln(a6);
+clear a6
+N
+%put this stuff back in
+a4 = bwdist_old(~B2);
+%save -v7.3 a4 a4
+
+%take this out
+%load a4 a4
+
+%new_data = a4.*a4; %was just a4 times some constant
+done_bw = 1
+clear B2
+
+[X_m,Y_m,Z_m]=find3d_max_point(a4);
+max_val = a4(X_m(1),Y_m(1),Z_m(1));
+a4=a4./max_val;
+
+
+tic
+stats = regionprops(L,D,'PixelList','PixelValues');
+
+%save stats stats
+
+s = size(stats);s = s(1,1)
+for i = 1:s; 
+    [mmm2,iii2] = max(stats(i,1).PixelValues);
+    Y(i) = round(stats(i,1).PixelList(iii2,1));
+    X(i) = round(stats(i,1).PixelList(iii2,2));
+    Z(i) = round(stats(i,1).PixelList(iii2,3));
+end
+toc
+
+
+while 0
+tic
+   for i = 1:N
+        %ss = (L==i);
+        f = find(L==i);
+        [mm,ii] = max(D(f));
+        [x3,y3,z3] = ind2sub(size(D),f(ii));
+        X(i)=x3(1);
+        Y(i)=y3(1);
+        Z(i)=z3(1);
+   end
+end
+
+
+%save endPoints22 X Y Z
+   
+   done_finding_endpoint = 1
+    size(X)
+
+%clear memory
+clearvars -except a4 dist_map_weight start_x start_y start_z X Y Z header output_filename x_si y_si z_si x3 y3 z3 xOrig yOrig zOrig
+
+%2nd fmm with weighting
+tic;[D3] = fast_marching(a4.^dist_map_weight,[start_x;start_y;start_z]);toc;
+end_marching = 1
+
+%order endpoints by distance from start
+for i = 1:numel(X)
+    Euc(i) = sqrt((X(i)-start_x)^2 + (Y(i) - start_y)^2 + (Z(i) - start_z)^2);
+end
+[s,swapping] = sort(Euc);
+swapping = fliplr(swapping);
+X = X(swapping);
+Y = Y(swapping);
+Z = Z(swapping);
+
+nn22 = sum(Euc<60) %was 30
+if nn22~=0
+    X(end-nn22+1:end) = [];
+    Y(end-nn22+1:end) = [];
+    Z(end-nn22+1:end) = [];
+end
+
+%free up more memory
+clear new2 B2 
+clear B2 a4 a6 a7 L b
+clear a4 a6 a7 ss X_m2 Y_m2 Z_m2 X_m Y_m Z_m D
+
+number_loops = numel(X)
+
+%compensate for larger volume
+start_x = start_x + 1;
+start_y = start_y + 1;
+start_z = start_z + 1;
+X = X + 1;
+Y = Y + 1;
+Z = Z + 1;
+
+skel = zeros(x_si+2,y_si+2,z_si+2);
+skel(start_x,start_y,start_z)=1;
+skel = uint8(skel);
+
+%[xx22,yy22,zz22] = size(skel);
+
+D_hold = Inf(size(skel));
+D_hold(2:end-1,2:end-1,2:end-1) = D3;
+D3 = D_hold;
+clear D_hold
+
+counting = 1;
+take_out = [];
+
+%begin extracting skeleton
+for ijk = 1:number_loops
+    
+    i = X(ijk);
+    j = Y(ijk);
+    k = Z(ijk);
+    
+    
+    if skel(i-1:i+1,j-1:j+1,k-1:k+1)~=1   %was 2's
+   
+    if D3(i,j,k)~=Inf
+    done_loop = 0;
+   
+    skel(skel>0) = 1;
+    
+    
+    while ((i~=start_x)||(j~=start_y)||(k~=start_z))&&done_loop~=1
+   
+        skel(i,j,k)=2;
+       
+    
+        d_neighborhood = D3(i-1:i+1,j-1:j+1,k-1:k+1);
+        
+        
+        
+        
+        if skel(i-1:i+1,j-1:j+1,k-1:k+1)~=1        
+            
+        f = find(d_neighborhood == min(d_neighborhood(:)));
+        [ii,jj,kk] = ind2sub(size(d_neighborhood),f);    
+        
+        i = i + ii(1) - 2;
+        j = j + jj(1) - 2;
+        k = k + kk(1) - 2;
+       
+        
+        else
+            done_loop = 1;
+                      
+        end
+
+       
+       
+    end
+    end
+    else
+        take_out(counting) = ijk;
+        counting = counting + 1
+    end
+    ijk
+   
+end
+toc
+
+%shift skel and start points back to correspond with original volume
+skel(skel==2) = 1;
+skel2 = skel(2:end-1,2:end-1,2:end-1);
+clear skel
+start_x = start_x - 1;start_y = start_y - 1;start_z = start_z - 1;
+
+%make sure one connected object
+CC = bwconncomp2(skel2);
+largest = 0; 
+for i = 1:CC.NumObjects; 
+    if numel(CC.PixelIdxList{1,i})>largest; 
+        indexing = i; 
+        largest = numel(CC.PixelIdxList{1,i});
+    end; 
+end;
+CC2.PixelIdxList{1,1} = CC.PixelIdxList{1,indexing};
+CC2.Connectivity = 26;
+CC2.NumObjects = 1;
+CC2.ImageSize = CC.ImageSize;
+skel2 = labelmatrix(CC2)>0;
+
+%remove any unnecesarry points
+skel2 = kuba_newThin_t3(skel2);
+
+clearvars -except skel2 header output_filename x_si y_si z_si x3 y3 z3 xOrig yOrig zOrig start_x start_y start_z
+out = zeros(xOrig,yOrig,zOrig,'uint8');
+out(min(x3):max(x3),min(y3):max(y3),min(z3):max(z3)) = skel2;
+clear skel2 
+
+start_x = start_x + min(x3) - 1
+start_y = start_y + min(y3) - 1
+start_z = start_z + min(z3) - 1
+%save file
+flag2 = writeavw_original8(uint8(out),header,output_filename);
+
+
+
+
+   
+    
