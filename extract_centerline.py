@@ -11,7 +11,7 @@ kline_vessel - [Kline et al. ABME 2010]
 
 kline_pore - [Kline et al. J Porous Mat 2011]
 
-kuba_thinning
+kuba_thinning - [Kuba paper...]
 
 This is a multi-line docstring. Paragraphs are separated with blank lines. 
 Lines conform to 79-column limit. 
@@ -28,18 +28,19 @@ of this cheatsheet.
 
 def find_3D_object_voxel_list(vol):
     
-    B2 = vol.copy() > 0
+    B2 = np.array(vol.copy() > 0)
 
 def find_terminal_end_points(vol):
 
+    something = 1
 
-def kline_discrete(vol, startID, *args):
+def kline_discrete(vol, startID, **kwargs):
     """This function creates a centerline from the segmented volume (vol)
 
     vol: 3D binary volume
     startID: index of root, as in [x,y,z] location
     
-    optional:
+    optional kwargs:
         dist_map_weight
         cluster_graph_weight
         min_branch_length
@@ -51,34 +52,72 @@ def kline_discrete(vol, startID, *args):
     B2 = np.array(vol.copy() > 0)
 
     # Set defaults
-    if dist_map_weight is undefined:
-        dist_map_weight = 6
+    if kwargs is not None:
+        for key, value in kwargs.iteritems():
+            print "%s == %s" %(key,value)
+            if key=='dist_map_weight':
+                dmw = value
+            if key=='cluster_graph_weight':
+                cgw = value
+    if 'dmw' not in locals():
+        dmw = 6
+    if 'cgw' not in locals():
+        cgw = np.sum(vol)/20
 
-    if cluster_graph_weight is undefined:
-        cluster_graph_weight = np.sum(vol)/20
+    print "dmw = %s" %(dmw)
+    print "cgw = %s" %(cgw)
 
     # Remember original volume size    
-    [xOrig,yOrig,zOrig] = B2.shape()
+    [xOrig,yOrig,zOrig] = np.shape(B2)
 
     # Find 3D coordinates of volume (in order to limit size of volume)
-    [x3,y3,z3] = find3d_coord(B2);
+    # Has to be much faster, easier, prettier way!!!
+    x3 = []
+    y3 = []
+    z3 = []
+    for i in range(0,xOrig):
+        for j in range(0,yOrig):
+            for k in range(0,zOrig):
+                if B2[i,j,k] > 0:
+                    x3.append(i)
+                    y3.append(j)
+                    z3.append(k)
 
     # Limit volume size
+    print np.min(x3),np.max(x3)
     B2 = B2[np.min(x3):np.max(x3)+1,np.min(y3):np.max(y3)+1,np.min(z3):np.max(z3)+1]
 
     # Setup starting index list and correct for change in volume size
-    sx = startID[0] - np.min(x3) + 1
-    sy = startID[1] - np.min(y3) + 1
-    sz = startID[2] - np.min(z3) + 1
+    sx = startID[0] - np.min(x3) 
+    sy = startID[1] - np.min(y3) 
+    sz = startID[2] - np.min(z3) 
 
-    # New volume size
-    x_si = size(B2(:,1,1));
-    y_si = size(B2(1,:,1));
-    z_si = size(B2(1,1,:));
-    x_si = x_si(1,1);
-    y_si = y_si(1,2);
-    z_si = z_si(1,3,1);
+    # New volume size (bounding box)
+    [x_si,y_si,z_si] = np.shape(B2)
 
+    print x_si,y_si,z_si,sx,sy,sz
+
+    phi = B2.copy()
+    phi[sx,sy,sz] = -1
+    speed = np.ones(shape = (np.shape(phi)))
+    binary_travel_time = skfmm.travel_time(phi, speed)
+
+import numpy as np
+import skfmm
+
+a = np.zeros(shape=(50,50,50), dtype = 'int8')
+a[25:35,25:35,25:35] = 1
+
+kline_discrete(a,[30,30,30],cluster_graph_weight = 100,dist_map_weight = 40)
+
+phi = np.ones((3,3)) 
+phi[1,1] = -1
+phi[0,1] = 0
+phi[1,2] = 0
+speed = np.ones((3,3)) * 200 #faster speed equals faster travel time (i.e., lower return value from skfmm.travel_time)
+print skfmm.travel_time(phi, speed)
+
+"""
     # Perform binary fmm to determine terminal endpoints
 
 %fmm for binary (no weight function)
@@ -199,6 +238,8 @@ clear D_hold
 counting = 1;
 take_out = [];
 
+print #number of endpoints found
+
 %begin extracting skeleton
 for ijk = 1:number_loops
     
@@ -288,7 +329,7 @@ start_z = start_z + min(z3) - 1
 %save file
 flag2 = writeavw_original8(uint8(out),header,output_filename);
 
-
+"""
 
 
    
