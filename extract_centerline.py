@@ -34,7 +34,38 @@ def find_terminal_end_points(vol):
 
     something = 1
 
-def kline_discrete(vol, startID, **kwargs):
+def detect_local_maxima(vol):
+    """
+    Takes a 3D volume and detects the peaks using the local maximum filter.
+    Returns a boolean mask of the peaks (i.e. 1 when
+    the pixel's value is the neighborhood maximum, 0 otherwise)
+    """
+    # define a 26-connected neighborhood
+    neighborhood = morphology.generate_binary_structure(3,3) # first is dimension, next is relative connectivity
+
+    # apply the local maximum filter; all locations of maximum value 
+    # in their neighborhood are set to 1
+    local_max = (filters.maximum_filter(vol, footprint=neighborhood)==vol)
+
+    # Remove background
+    local_max[vol==0] = 0
+
+    # Find endpoint indici
+    [xOrig,yOrig,zOrig] = np.shape(vol)
+    x = []
+    y = []
+    z = []
+    for i in range(0,xOrig):
+        for j in range(0,yOrig):
+            for k in range(0,zOrig):
+                if local_max[i,j,k] > 0:
+                    x.append(i)
+                    y.append(j)
+                    z.append(k)
+
+    return local_max, x, y, z
+
+def kline_vessel(vol, startID, **kwargs):
     """This function creates a centerline from the segmented volume (vol)
 
     vol: 3D binary volume
@@ -49,7 +80,7 @@ def kline_discrete(vol, startID, **kwargs):
     # Imports
 
     # Make sure object is equal to 1
-    B2 = np.array(vol.copy() > 0)
+    B2 = np.array(vol.copy() > 0, dtype = 'int8')
 
     # Set defaults
     if kwargs is not None:
@@ -71,7 +102,7 @@ def kline_discrete(vol, startID, **kwargs):
     [xOrig,yOrig,zOrig] = np.shape(B2)
 
     # Find 3D coordinates of volume (in order to limit size of volume)
-    # Has to be much faster, easier, prettier way!!!
+    # There has to be a much faster, easier, prettier way!!!
     x3 = []
     y3 = []
     z3 = []
@@ -94,30 +125,66 @@ def kline_discrete(vol, startID, **kwargs):
 
     # New volume size (bounding box)
     [x_si,y_si,z_si] = np.shape(B2)
-
     print x_si,y_si,z_si,sx,sy,sz
 
+    # Perform first fast march to determine endpoints
+    # works on binary speed function
     phi = B2.copy()
     phi[sx,sy,sz] = -1
     speed = np.ones(shape = (np.shape(phi)))
+    mask = B2<1
+    phi = np.ma.MaskedArray(phi, mask)
     binary_travel_time = skfmm.travel_time(phi, speed)
 
+    # Fill in masked values and set to zero
+    binary_travel_time = binary_travel_time.filled()
+    binary_travel_time[binary_travel_time==1.e20] = 0
+
+    # Normalize and apply cluster graph weighting
+    hold_binary_travel_time = binary_travel_time.copy()
+    binary_travel_time = np.round(binary_travel_time/np.max(binary_travel_time) * cgw) #by rounding group clusters together, and find maximum clusters
+    #these will need to be searched then individually to find local max, one within each cluster...
+
+    print np.max(binary_travel_time)
+    # Detect local 'cluster' maximums
+    [a6, endx, endy, endz] = detect_local_maxima(binary_travel_time)
+    print "number of non-zero elements is %s" % (np.sum(B2))
+    print "number of local maxima was %s" % (np.sum(a6))
+
+    print np.sum(hold_binary_travel_time)
+    #hold_binary_travel_time[a6==False] = 0 #remove non-max clusters
+    # Not sure, but seems like maybe cluster stuff complicates it further, maybe just find local max, and deal with it at level of length of branches
+    print np.sum(hold_binary_travel_time)
+    [a7, endx, endy, endz] = detect_local_maxima(hold_binary_travel_time)
+    print "number of local maxima was %s" % (np.sum(a7))
+    return binary_travel_time, endx, endy, endz
+
+# Import
 import numpy as np
 import skfmm
+import scipy.ndimage.filters as filters
+import scipy.ndimage.morphology as morphology
 
-a = np.zeros(shape=(50,50,50), dtype = 'int8')
-a[25:35,25:35,25:35] = 1
+#Test array stuff
+a = np.zeros(shape=(150,150,150), dtype = 'int8')
+a[5:140,5:140,5:140] = 1
+a[134:136,133:141,134:136] = 1
+print a.dtype
 
-kline_discrete(a,[30,30,30],cluster_graph_weight = 100,dist_map_weight = 40)
+# Call Function
+[travel_time, endx, endy, endz] = kline_vessel(a, [8,8,8], cluster_graph_weight = 1000, dist_map_weight = 40)
 
-phi = np.ones((3,3)) 
-phi[1,1] = -1
-phi[0,1] = 0
-phi[1,2] = 0
-speed = np.ones((3,3)) * 200 #faster speed equals faster travel time (i.e., lower return value from skfmm.travel_time)
-print skfmm.travel_time(phi, speed)
+#neighborhood = morphology.generate_binary_structure(3,2)
+#print neighborhood
 
 """
+phi = np.ones((3,3,3)) 
+phi[1,1,1] = -1
+phi[0,1,1] = 0
+phi[1,2,1] = 0
+speed = np.ones((3,3,3)) * 200 #faster speed equals faster travel time (i.e., lower return value from skfmm.travel_time)
+print skfmm.travel_time(phi, speed)
+
     # Perform binary fmm to determine terminal endpoints
 
 %fmm for binary (no weight function)
