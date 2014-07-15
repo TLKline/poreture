@@ -4,7 +4,7 @@
 
 The methods work on 3D binary volumes composed of
 0: background
-1: object to be skeletonized; have centerline extracted
+1: object to be skeletonized/centerline extracted
 The volume representations are voxel based
 
 kline_vessel - [Kline et al. ABME 2010]
@@ -63,7 +63,7 @@ def detect_local_maxima(vol):
                     y.append(j)
                     z.append(k)
 
-    return local_max, x, y, z
+    return x, y, z
 
 def kline_vessel(vol, startID, **kwargs):
     """This function creates a centerline from the segmented volume (vol)
@@ -75,11 +75,18 @@ def kline_vessel(vol, startID, **kwargs):
         dist_map_weight
         cluster_graph_weight
         min_branch_length
+        min_branch_to_root
+
+    dependencies:
+        numpy
+        scikit-fmm (import name: skfmm)
+        scipy
+
     """
 
     # Imports
 
-    # Make sure object is equal to 1
+    # Make sure object is equal to 1, without specifying dtype, would be logical
     B2 = np.array(vol.copy() > 0, dtype = 'int8')
 
     # Set defaults
@@ -90,11 +97,18 @@ def kline_vessel(vol, startID, **kwargs):
                 dmw = value
             if key=='cluster_graph_weight':
                 cgw = value
+            if key=='min_branch_length':
+                mbl = value
+            if key=='min_branch_to_root':
+                mbtr = value
     if 'dmw' not in locals():
         dmw = 6
     if 'cgw' not in locals():
         cgw = np.sum(vol)/20
-
+    if 'mbl' not in locals():
+        mbl = 5
+    if 'mbtr' not in locals():
+        mbtr = 10
     print "dmw = %s" %(dmw)
     print "cgw = %s" %(cgw)
 
@@ -130,49 +144,85 @@ def kline_vessel(vol, startID, **kwargs):
     # Perform first fast march to determine endpoints
     # works on binary speed function
     phi = B2.copy()
+    constant_speed = B2.copy()
     phi[sx,sy,sz] = -1
-    speed = np.ones(shape = (np.shape(phi)))
+    #constant_speed = np.ones(shape = (np.shape(phi)))
     mask = B2<1
     phi = np.ma.MaskedArray(phi, mask)
-    binary_travel_time = skfmm.travel_time(phi, speed)
+    binary_travel_time = skfmm.travel_time(phi, constant_speed)
 
     # Fill in masked values and set to zero
     binary_travel_time = binary_travel_time.filled()
     binary_travel_time[binary_travel_time==1.e20] = 0
+    print "minimum of binary travel time is %s" % np.min(binary_travel_time)
 
-    # Normalize and apply cluster graph weighting
+    # Normalize and apply cluster graph weighting (cluster graph weighting doesn't seem to be doing much, perhaps a better FMM implementation???)
+    # Find endpoints
     hold_binary_travel_time = binary_travel_time.copy()
-    binary_travel_time = np.round(binary_travel_time/np.max(binary_travel_time) * cgw) #by rounding group clusters together, and find maximum clusters
-    #these will need to be searched then individually to find local max, one within each cluster...
-
-    print np.max(binary_travel_time)
-    # Detect local 'cluster' maximums
-    [a6, endx, endy, endz] = detect_local_maxima(binary_travel_time)
     print "number of non-zero elements is %s" % (np.sum(B2))
-    print "number of local maxima was %s" % (np.sum(a6))
+    [endx, endy, endz] = detect_local_maxima(hold_binary_travel_time)
+    print "number of local maxima was %s" % (len(endx))
 
-    print np.sum(hold_binary_travel_time)
-    #hold_binary_travel_time[a6==False] = 0 #remove non-max clusters
-    # Not sure, but seems like maybe cluster stuff complicates it further, maybe just find local max, and deal with it at level of length of branches
-    print np.sum(hold_binary_travel_time)
-    [a7, endx, endy, endz] = detect_local_maxima(hold_binary_travel_time)
-    print "number of local maxima was %s" % (np.sum(a7))
-    return binary_travel_time, endx, endy, endz
+    # Now perform second FMM, to create field for gradient descent
+    # Need distance transform for speed
+    print "min of const speed %s, and max of const speed %s" % (np.min(constant_speed),np.max(constant_speed))
+    dMap = morphology.distance_transform_edt(constant_speed) #distance map finds distance from 1's, to nearest 0.
+    print np.min(dMap), np.max(dMap) 
+    weighted_speed = dMap ** dmw
+    print np.min(weighted_speed), np.max(weighted_speed) #min is 1, was an issue with constant_speed being equal to 1 everywhere
+    weighted_travel_time = skfmm.travel_time(phi, weighted_speed)
+    weighted_travel_time = weighted_travel_time.filled()
+    weighted_travel_time[weighted_travel_time==1.e20] = 0 # maybe remove to keep outside stuff high (for grad descent)
+    print np.min(weighted_travel_time), np.max(weighted_travel_time)
+    print weighted_travel_time[sx,sy,sz]
+
+    # Order endpoints by distance from start
+    print "number of endpoints is %s" % len(endx)
+    Euc = []
+    for i in range (0,len(endx)):
+        Euc.append(np.sqrt((endx[i]-sx)**2 + (endy[i] - sy)**2 + (endz[i] - sz)**2))
+    mbl
+    print Euc
+    order_indici = np.argsort(Euc)
+    Euc = np.sort(Euc)
+    print order_indici
+    #np.delete(order_indici,(Euc<mbl)) #not deleting correctly
+    print mbtr
+    print Euc<mbtr
+    print order_indici
+    X = []
+    Y = []
+    Z = []
+    for i in range(0,len(order_indici)):
+        if Euc[i] > mbtr:
+            X.append(endx[order_indici[i]])
+            Y.append(endy[order_indici[i]])
+            Z.append(endz[order_indici[i]])
+
+    print "number of endpoints after pruning %s" % len(X)
+
+    print [X,Y,Z]
+    print [sx,sy,sz]
+    init_find_branches = MCP(B2.copy(),fully_connected = True)
+    cumulative_costs, traceback = init_find_branches.find_costs(starts = ([X,Y,Z]), ends = ([sx, sy, sz]))
+    print traceback
+    return X, Y, Z
 
 # Import
 import numpy as np
 import skfmm
 import scipy.ndimage.filters as filters
 import scipy.ndimage.morphology as morphology
+from skimage.graph import MCP
 
 #Test array stuff
 a = np.zeros(shape=(150,150,150), dtype = 'int8')
 a[5:140,5:140,5:140] = 1
-a[134:136,133:141,134:136] = 1
+a[134:136,133:145,134:136] = 1
 print a.dtype
 
-# Call Function
-[travel_time, endx, endy, endz] = kline_vessel(a, [8,8,8], cluster_graph_weight = 1000, dist_map_weight = 40)
+# Call Function, all we care about is endpoints
+[X, Y, Z] = kline_vessel(a, [8,8,8], min_branch_to_root = 200) #, cluster_graph_weight = 1000, dist_map_weight = 40)
 
 #neighborhood = morphology.generate_binary_structure(3,2)
 #print neighborhood
