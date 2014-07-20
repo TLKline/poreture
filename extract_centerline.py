@@ -1,30 +1,32 @@
-#! /usr/bin/env python
 # -*- coding: utf-8 -*-
-"""This module implements a number of centerline extraction methods.
+
+"""
+This module implements centerline extraction and skeletonization methods.
 
 The methods work on 3D binary volumes composed of
-0: background
-1: object to be skeletonized/centerline extracted
-The volume representations are voxel based
+    0: background
+    1: object to be skeletonized/centerline extracted
 
-kline_vessel - [Kline et al. ABME 2010]
+The work was inspired by the need for analysis of voxel-based geometries
 
-kline_pore - [Kline et al. J Porous Mat 2011]
-
-kuba_thinning - [Kuba paper...]
-
-This is a multi-line docstring. Paragraphs are separated with blank lines. 
-Lines conform to 79-column limit. 
-
-Module and packages names should be short, lower_case_with_underscores.
-
-See http://www.python.org/dev/peps/pep-0008/ for more PEP-8 details and
-http://wwd.ca/blog/2009/07/09/pep-8-cheatsheet/ for an up-to-date version
-of this cheatsheet.
+Literature references for implemented methods
+    kline_vessel - [Kline et al. ABME 2010]
+    kline_pore - [Kline et al. J Porous Mat 2011]
+    kuba_thinning - [Kuba paper...]
 """
 
 # a 79-char ruler:
 #234567891123456789212345678931234567894123456789512345678961234567897123456789
+
+# Imports
+import os
+import sys
+import time
+import nibabel as nib
+import numpy as np
+import skfmm
+import scipy.ndimage.filters as filters
+import scipy.ndimage.morphology as morphology
 
 def find_3D_object_voxel_list(vol):
     
@@ -68,14 +70,21 @@ def detect_local_maxima(vol):
 def kline_vessel(vol, startID, **kwargs):
     """This function creates a centerline from the segmented volume (vol)
 
-    vol: 3D binary volume
-    startID: index of root, as in [x,y,z] location
+    Inputs:
+        Required:
+            vol: 3D binary volume where -
+                0: background
+                1: object to be skeletonized/centerline extracted
+            startID: index of root, as in [x,y,z] location
     
-    optional kwargs:
-        dist_map_weight
-        cluster_graph_weight
-        min_branch_length
-        min_branch_to_root
+        Optional (kwargs):
+            dist_map_weight
+            cluster_graph_weight
+            min_branch_length
+            min_branch_to_root
+
+    Returns:
+        extracted_centerline
 
     dependencies:
         numpy
@@ -83,9 +92,7 @@ def kline_vessel(vol, startID, **kwargs):
         scipy
 
     """
-
-    # Imports
-
+    
     # Make sure object is equal to 1, without specifying dtype, would be logical
     B2 = np.array(vol.copy() > 0, dtype = 'int8')
 
@@ -129,7 +136,6 @@ def kline_vessel(vol, startID, **kwargs):
                     z3.append(k)
 
     # Limit volume size
-    print np.min(x3),np.max(x3)
     B2 = B2[np.min(x3):np.max(x3)+1,np.min(y3):np.max(y3)+1,np.min(z3):np.max(z3)+1]
 
     # Setup starting index list and correct for change in volume size
@@ -139,8 +145,9 @@ def kline_vessel(vol, startID, **kwargs):
 
     # New volume size (bounding box)
     [x_si,y_si,z_si] = np.shape(B2)
-    print x_si,y_si,z_si,sx,sy,sz
 
+    sys.stdout.flush() 
+    time.sleep(1)       
     # Perform first fast march to determine endpoints
     # works on binary speed function
     phi = B2.copy()
@@ -156,6 +163,8 @@ def kline_vessel(vol, startID, **kwargs):
     binary_travel_time[binary_travel_time==1.e20] = 0
     print "minimum of binary travel time is %s" % np.min(binary_travel_time)
 
+    sys.stdout.flush() 
+    time.sleep(1)       
     # Normalize and apply cluster graph weighting (cluster graph weighting doesn't seem to be doing much, perhaps a better FMM implementation???)
     # Find endpoints
     hold_binary_travel_time = binary_travel_time.copy()
@@ -163,69 +172,168 @@ def kline_vessel(vol, startID, **kwargs):
     [endx, endy, endz] = detect_local_maxima(hold_binary_travel_time)
     print "number of local maxima was %s" % (len(endx))
 
+    sys.stdout.flush() 
+    time.sleep(1)       
     # Now perform second FMM, to create field for gradient descent
-    # Need distance transform for speed
-    print "min of const speed %s, and max of const speed %s" % (np.min(constant_speed),np.max(constant_speed))
     dMap = morphology.distance_transform_edt(constant_speed) #distance map finds distance from 1's, to nearest 0.
-    print np.min(dMap), np.max(dMap) 
     weighted_speed = dMap ** dmw
-    print np.min(weighted_speed), np.max(weighted_speed) #min is 1, was an issue with constant_speed being equal to 1 everywhere
     weighted_travel_time = skfmm.travel_time(phi, weighted_speed)
     weighted_travel_time = weighted_travel_time.filled()
-    weighted_travel_time[weighted_travel_time==1.e20] = 0 # maybe remove to keep outside stuff high (for grad descent)
-    print np.min(weighted_travel_time), np.max(weighted_travel_time)
-    print weighted_travel_time[sx,sy,sz]
 
     # Order endpoints by distance from start
-    print "number of endpoints is %s" % len(endx)
+    print "Min of weighted travel time: %s, max: %s" %(np.min(weighted_travel_time),np.max(weighted_travel_time))
+    print "Number of initialized endpoints is %s" % len(endx)
     Euc = []
     for i in range (0,len(endx)):
         Euc.append(np.sqrt((endx[i]-sx)**2 + (endy[i] - sy)**2 + (endz[i] - sz)**2))
-    mbl
-    print Euc
-    order_indici = np.argsort(Euc)
+
+    order_indici = np.argsort(Euc) # returns indices to sort elements
     Euc = np.sort(Euc)
-    print order_indici
-    #np.delete(order_indici,(Euc<mbl)) #not deleting correctly
-    print mbtr
-    print Euc<mbtr
-    print order_indici
+
     X = []
     Y = []
     Z = []
+
     for i in range(0,len(order_indici)):
-        if Euc[i] > mbtr:
+        if Euc[i] > mbtr: # Check whether endpoint is sufficiently far from root voxel (min_branch_to_root)
             X.append(endx[order_indici[i]])
             Y.append(endy[order_indici[i]])
             Z.append(endz[order_indici[i]])
 
-    print "number of endpoints after pruning %s" % len(X)
+    print "New root is at x: %s, y: %s, z: %s" %(sx+1,sy+1,sz+1)
+    print "Number of endpoints after pruning is %s" % len(X)
 
-    print [X,Y,Z]
-    print [sx,sy,sz]
-    init_find_branches = MCP(B2.copy(),fully_connected = True)
-    cumulative_costs, traceback = init_find_branches.find_costs(starts = ([X,Y,Z]), ends = ([sx, sy, sz]))
-    print traceback
-    return X, Y, Z
+    sys.stdout.flush() 
+    time.sleep(1)       
+    # Now implement march back method to build centerline (enlarge volume)
+    # The approach proceeds by updating skeleton as equal to 2
+    # When branch is finished, the skeleton is solidified and set to 1
+    skel = np.zeros(shape=(x_si+2,y_si+2,z_si+2), dtype = 'uint8')
+    D = skel.copy() + 1.e20
+    D[1:x_si+1,1:y_si+1,1:z_si+1] = weighted_travel_time
+    counting = 1
+    take_out = []
+    number_loops = len(X)
 
-# Import
-import numpy as np
-import skfmm
-import scipy.ndimage.filters as filters
-import scipy.ndimage.morphology as morphology
-from skimage.graph import MCP
+    # Correct points for new size of volume
+    start_x = sx + 1
+    start_y = sy + 1
+    start_z = sz + 1
 
-#Test array stuff
-a = np.zeros(shape=(150,150,150), dtype = 'int8')
-a[5:140,5:140,5:140] = 1
-a[134:136,133:145,134:136] = 1
-print a.dtype
+    D[start_x,start_y,start_z] = 0
+    skel[start_x,start_y,start_z] = 1 # initialize root
 
-# Call Function, all we care about is endpoints
-[X, Y, Z] = kline_vessel(a, [8,8,8], min_branch_to_root = 200) #, cluster_graph_weight = 1000, dist_map_weight = 40)
+    # Begin extracting skeleton
+    for ijk in range(0,number_loops):
 
-#neighborhood = morphology.generate_binary_structure(3,2)
-#print neighborhood
+        # Initialize endpoints and correct for larger volume   
+        i = X[ijk] + 1
+        j = Y[ijk] + 1
+        k = Z[ijk] + 1
+        
+        # Check whether endpoint in neighborhood of skeleton (whisker)
+        if np.all(skel[i-1:i+2,j-1:j+2,k-1:k+2])!=1: 
+       
+            if D[i,j,k]!=1.e20:
+
+                done_loop = 0               
+                skel[skel>0] = 1                
+                
+                # Check whether branch is now connected to rest of tree (stopping criteria)
+                while ((i!=start_x) or (j!=start_y) or (k!=start_z)) and done_loop!=1: # can probably just do done_loop part (or) doesn't make sense (tried just done loop, always went to 1.e20 for each branch)
+                #while ((i!=start_x) and (j!=start_y) and (k!=start_z)) and done_loop!=1:
+                    skel[i,j,k]=2               
+                    d_neighborhood = D[i-1:i+2,j-1:j+2,k-1:k+2]                    
+                    
+                    if np.all(skel[i-1:i+2,j-1:j+2,k-1:k+2])!=1:        
+                        
+                        currentMin = 1.e21 # was 1.e20
+                        # Find min in neighborhood
+                        for ni in range(0,3):
+                            for nj in range(0,3):
+                                for nk in range(0,3):
+                                    if (d_neighborhood[ni,nj,nk] < currentMin) and (np.all([ni,nj,nk])!=1) and (skel[i+ni-1,j+nj-1,k+nk-1]!=2):
+                                        ii = ni
+                                        jj = nj
+                                        kk = nk
+                                        currentMin = d_neighborhood[ni,nj,nk]
+
+                        # Update                         
+                        i = i + ii - 1
+                        j = j + jj - 1
+                        k = k + kk - 1
+                        
+                        #print ijk, i,j,k, D[i,j,k]
+                        #sys.stdout.flush()
+                        #time.sleep(0.05)
+
+                        if D[i,j,k] == 1.e20:
+                            done_loop = 1
+                            skel[skel==2] = 0 #remove branch, not marching back to root (local min in weighted_travel_time)
+                    else:
+                        done_loop = 1
+            
+            print ijk
+            sys.stdout.flush() 
+            time.sleep(1)                 
+        else:
+            take_out.append(ijk)
+            
+
+    #shift skel and start points back to correspond with original volume
+    centerline_extracted = np.zeros(shape=(x_si,y_si,z_si), dtype = 'uint8')
+    skel[skel==2] = 1
+    centerline_extracted = skel[1:x_si+1,1:y_si+1,1:z_si+1]
+    print "Number of centerline voxels is %s" %(np.sum(centerline_extracted))
+
+    final_centerline = np.zeros(shape=(xOrig,yOrig,zOrig), dtype = 'uint8')
+    final_centerline[np.min(x3):np.max(x3)+1,np.min(y3):np.max(y3)+1,np.min(z3):np.max(z3)+1] = centerline_extracted
+
+    final_march = np.zeros(shape=(xOrig,yOrig,zOrig))
+    final_march[np.min(x3):np.max(x3)+1,np.min(y3):np.max(y3)+1,np.min(z3):np.max(z3)+1] = weighted_travel_time
+
+    return final_centerline, final_march
+    
+
+test_case = 2
+
+#Test array for development
+if test_case == 1:
+    a = np.zeros(shape=(150,150,150), dtype = 'int8')
+    a[5:140,5:140,5:140] = 1
+    a[134:136,133:145,134:136] = 1
+    root_location = [8,8,8]
+    mbtr_to_pass = 20
+
+if test_case == 2:
+    cur_dir = os.getcwd()
+    inputFILE = (cur_dir+'/DATA/'+'h61cu_resized_t400.nii.gz')
+    fileLOAD = nib.load(inputFILE)
+    fileDATA = fileLOAD.get_data()
+    a = fileDATA.copy()
+    root_location = [134,96,29]
+    mbtr_to_pass = 30
+    print np.shape(a)
+    print fileLOAD.get_affine()
+    print a[96,54,30]
+    print np.min(a),np.max(a)
+
+
+# Call Function
+[extracted_centerline, final_march] = kline_vessel(a, root_location, min_branch_to_root = mbtr_to_pass) 
+#, cluster_graph_weight = 1000, dist_map_weight = 40)
+
+if np.any(extracted_centerline - (extracted_centerline*a)) == 1:
+    print "WARNING: Centerline voxel outside original volume!!!"
+
+# Save
+output_filename = cur_dir+'/DATA/testCenterline4.nii.gz'
+new_image = nib.Nifti1Image(extracted_centerline,fileLOAD.get_affine())
+nib.save(new_image,output_filename)
+
+output_filename = cur_dir+'/DATA/final_march4.nii.gz'
+new_image = nib.Nifti1Image(final_march,fileLOAD.get_affine())
+nib.save(new_image,output_filename)
 
 """
 phi = np.ones((3,3,3)) 
