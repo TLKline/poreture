@@ -1,7 +1,7 @@
-Grow-Cut Image Segmentation
+Poreture
 ==========================
 
-The "growcut" package implements cellular automata based segmentation algorithm.
+The "poreture" package implements centerline extraction and skeletonization methods.
 
 References:
 -----------
