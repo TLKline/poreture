@@ -12,16 +12,13 @@ Literature references for implemented methods
     kline_pore - [Kline et al. J Porous Mat 2011]
 """
 
-# a 79-char ruler:
-#234567891123456789212345678931234567894123456789512345678961234567897123456789
-
 # Imports
 import os
 import sys
 import time
 import nibabel as nib
 import numpy as np
-import skfmm
+import skfmm # pip install scikit-fmm
 import scipy.ndimage.filters as filters
 import scipy.ndimage.morphology as morphology
 
