@@ -1,0 +1,8 @@
+setup.py
+poreture/__init__.py
+poreture/extract_centerline.py
+poreture.egg-info/PKG-INFO
+poreture.egg-info/SOURCES.txt
+poreture.egg-info/dependency_links.txt
+poreture.egg-info/requires.txt
+poreture.egg-info/top_level.txt
