@@ -132,18 +132,9 @@ def kline_vessel(vol, startID, **kwargs):
     # Remember original volume size
     [xOrig,yOrig,zOrig] = np.shape(B2)
 
-    # Find 3D coordinates of volume (in order to limit size of volume)
-    # There has to be a much faster, easier, prettier way!!!
-    x3 = []
-    y3 = []
-    z3 = []
-    for i in range(0,xOrig):
-        for j in range(0,yOrig):
-            for k in range(0,zOrig):
-                if B2[i,j,k] > 0:
-                    x3.append(i)
-                    y3.append(j)
-                    z3.append(k)
+    # Find 3D coordinates of volume
+
+    x3, y3, z3 = find_3D_object_voxel_list(B2)
 
     # Limit volume size
     B2 = B2[np.min(x3):np.max(x3)+1,np.min(y3):np.max(y3)+1,np.min(z3):np.max(z3)+1]
