@@ -23,20 +23,24 @@ import scipy.ndimage.filters as filters
 import scipy.ndimage.morphology as morphology
 
 def find_3D_object_voxel_list(vol):
-    
-    # Find 3D coordinates of volume (in order to limit size of volume)
-    # There has to be a much faster, easier, prettier way!!!
-    x3 = []
-    y3 = []
-    z3 = []
-    for i in range(0,xOrig):
-        for j in range(0,yOrig):
-            for k in range(0,zOrig):
-                if vol[i,j,k] > 0:
-                    x3.append(i)
-                    y3.append(j)
-                    z3.append(k)
-    return x3,y3,z3
+    """This function creates a centerline from the segmented volume (vol)
+
+    Inputs:
+        Required:
+            vol: 3D binary volume where -
+                0: background
+                1: object to be skeletonized/centerline extracted
+    Returns:
+        nz_x, nz_y, nz_z
+            lists of non-zero x, y, z co-ordinates
+
+    Dependencies:
+        numpy
+    """
+    nz_coords = np.nonzero(vol)
+    nz_x, nz_y, nz_z = [nz_coords[i].tolist() for i in range(3)]
+    return nz_x, nz_y, nz_z
+
 
 def find_terminal_end_points(vol):
 
@@ -125,21 +129,12 @@ def kline_vessel(vol, startID, **kwargs):
     print "dmw = %s" %(dmw)
     print "cgw = %s" %(cgw)
 
-    # Remember original volume size    
+    # Remember original volume size
     [xOrig,yOrig,zOrig] = np.shape(B2)
 
-    # Find 3D coordinates of volume (in order to limit size of volume)
-    # There has to be a much faster, easier, prettier way!!!
-    x3 = []
-    y3 = []
-    z3 = []
-    for i in range(0,xOrig):
-        for j in range(0,yOrig):
-            for k in range(0,zOrig):
-                if B2[i,j,k] > 0:
-                    x3.append(i)
-                    y3.append(j)
-                    z3.append(k)
+    # Find 3D coordinates of volume
+
+    x3, y3, z3 = find_3D_object_voxel_list(B2)
 
     # Limit volume size
     B2 = B2[np.min(x3):np.max(x3)+1,np.min(y3):np.max(y3)+1,np.min(z3):np.max(z3)+1]
